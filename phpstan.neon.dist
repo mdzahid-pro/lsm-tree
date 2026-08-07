@@ -1,0 +1,14 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - src
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # The engine deliberately duck-types the log manager so that a channel
+        # can be selected without depending on illuminate/log directly.
+        -
+            message: '#Cannot call method channel\(\)#'
+            path: src/Laravel/StoreFactory.php
