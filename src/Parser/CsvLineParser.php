@@ -30,7 +30,9 @@ final readonly class CsvLineParser implements OperationParserInterface
 
         $columns = str_getcsv($contents, $this->delimiter, '"', '');
 
-        if ($columns === [] || $columns[0] === null) {
+        // str_getcsv() returns a non-empty list for the non-blank input that
+        // reaches this line, so only a null first column is possible here.
+        if ($columns[0] === null) {
             return null;
         }
 
