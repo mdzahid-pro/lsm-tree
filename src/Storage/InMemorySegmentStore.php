@@ -49,14 +49,14 @@ final class InMemorySegmentStore implements SegmentStoreInterface
         return $segment;
     }
 
+    /**
+     * $replacement is deliberately unused: write() already stored it. Adding it
+     * again here is what left the level holding the merged run twice.
+     */
     public function replace(array $obsolete, ?SegmentInterface $replacement): void
     {
         foreach ($obsolete as $segment) {
             $this->remove($segment->id());
-        }
-
-        if ($replacement !== null) {
-            $this->prepend($replacement);
         }
     }
 
