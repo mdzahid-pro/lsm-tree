@@ -13,9 +13,12 @@ use Lsm\Segment\SegmentFactory;
 /**
  * Keeps the whole hierarchy in RAM.
  *
- * The default driver, the fake used throughout the test suite, and the
- * reference against which the persistent drivers are checked. It is not
- * shared between processes, so it needs no locking and no transactions.
+ * The zero-configuration driver and the one the test suite runs against;
+ * config/lsm.php ships with the database driver selected. It is not shared
+ * between processes, so it needs no locking and no transactions.
+ *
+ * It is not the reference implementation. Every driver is held to the shared
+ * expectations in tests/Feature/SegmentStoreConformanceTest.php.
  */
 final class InMemorySegmentStore implements SegmentStoreInterface
 {
