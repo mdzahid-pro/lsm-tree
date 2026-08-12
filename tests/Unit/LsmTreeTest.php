@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace Lsm\Tests\Unit;
 
 use Lsm\Config\EngineConfiguration;
+use Lsm\Contract\CompactionPolicyInterface;
+use Lsm\Exception\CompactionStalledException;
 use Lsm\Exception\KeyNotFoundException;
+use Lsm\Exception\LsmExceptionInterface;
 use Lsm\Filter\BloomFilterFactory;
 use Lsm\LsmTree;
+use Lsm\Model\Entry;
 use Lsm\Runtime\EngineFactory;
 use Lsm\Segment\SegmentFactory;
 use Lsm\Sequence\SequentialSegmentIdGenerator;
 use Lsm\Storage\InMemorySegmentStore;
+use Lsm\Tests\Doubles\NeverSatisfiedCompactionPolicy;
 use Lsm\Trace\CollectingTraceListener;
 use Lsm\Wal\InMemoryWriteAheadLog;
 use PHPUnit\Framework\Attributes\Test;
@@ -173,6 +178,60 @@ final class LsmTreeTest extends TestCase
         self::assertSame($stored, $tree->statistics()->runs);
     }
 
+    /**
+     * Nothing in CompactionPolicyInterface can force a policy to settle, so a
+     * third-party policy that always returns a plan must fail loudly rather
+     * than pin a queue worker at 100% forever.
+     */
+    #[Test]
+    public function a_policy_that_never_settles_is_stopped(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        $this->expectException(CompactionStalledException::class);
+
+        $tree->compact();
+    }
+
+    #[Test]
+    public function the_stall_error_names_the_offending_policy(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        try {
+            $tree->compact();
+            self::fail('Compaction should not have settled.');
+        } catch (CompactionStalledException $exception) {
+            self::assertStringContainsString(NeverSatisfiedCompactionPolicy::class, $exception->getMessage());
+            self::assertStringContainsString('1000', $exception->getMessage());
+        }
+    }
+
+    #[Test]
+    public function the_stall_error_is_catchable_as_a_package_exception(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        $this->expectException(LsmExceptionInterface::class);
+
+        $tree->compact();
+    }
+
+    #[Test]
+    public function the_shipped_policy_never_trips_the_guard(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 20) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        self::assertSame('v20', $tree->get('k20'));
+    }
+
     #[Test]
     public function a_key_that_was_never_written_is_absent(): void
     {
@@ -254,6 +313,29 @@ final class LsmTreeTest extends TestCase
         $tree->put('b', '2');
 
         self::assertNotSame([], $trace->events());
+    }
+
+    /**
+     * Seeds one run at level 0 directly, so compact() has work to do without a
+     * put() first tripping the stall inside its own automatic flush.
+     */
+    private function treeWithPolicy(CompactionPolicyInterface $policy): LsmTree
+    {
+        $store = new InMemorySegmentStore(
+            new SegmentFactory(
+                new SequentialSegmentIdGenerator,
+                new BloomFilterFactory(10, 7),
+            ),
+        );
+
+        $store->write([new Entry('a', '1', 1)], 0, 1);
+
+        return (new EngineFactory)->create(
+            new EngineConfiguration(100, 2, 1),
+            $store,
+            new InMemoryWriteAheadLog,
+            policy: $policy,
+        );
     }
 
     private function tree(
