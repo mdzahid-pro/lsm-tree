@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed the package from `lsm-tree/laravel` to `mdzahid-pro/lsm-tree`, which
+  is the repository it actually lives in. Install with
+  `composer require mdzahid-pro/lsm-tree`. No namespace, class or config key
+  changed.
+
+### Added
+
+- `authors`, `support` and `homepage` metadata, so the package advertises a
+  maintainer and somewhere to report bugs.
+- A "What it looks like in practice" section in `README.md`: four worked
+  scenarios and the segment driver each one wants.
+
 ## [1.0.0] - 2026-08-12
 
 Initial release.
