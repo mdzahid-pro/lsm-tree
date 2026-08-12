@@ -1,11 +1,25 @@
 # Changelog
 
-All notable changes to `lsm-tree/laravel` are documented here.
+All notable changes to `mdzahid-pro/lsm-tree` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Changed
+
+- Renamed the package from `lsm-tree/laravel` to `mdzahid-pro/lsm-tree`, which
+  is the repository it actually lives in. Install with
+  `composer require mdzahid-pro/lsm-tree`. No namespace, class or config key
+  changed.
+
+### Added
+
+- `authors`, `support` and `homepage` metadata, so the package advertises a
+  maintainer and somewhere to report bugs.
+- A "What it looks like in practice" section in `README.md`: four worked
+  scenarios and the segment driver each one wants.
 
 ## [1.0.0] - 2026-08-12
 
@@ -33,5 +47,5 @@ Initial release.
   `lsm:prune`, `lsm:import`, `lsm:get`, `lsm:put`, `lsm:forget`.
 - Import from JSON Lines, NDJSON, CSV and TSV, from a local path or any disk.
 
-[Unreleased]: https://github.com/lsm-tree/laravel/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/lsm-tree/laravel/releases/tag/v1.0.0
+[Unreleased]: https://github.com/mdzahid-pro/lsm-tree/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mdzahid-pro/lsm-tree/releases/tag/v1.0.0
