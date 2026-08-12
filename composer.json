@@ -1,5 +1,5 @@
 {
-    "name": "lsm-tree/laravel",
+    "name": "mdzahid-pro/lsm-tree",
     "description": "A log-structured merge tree for Laravel: append-only writes, immutable sorted runs, background compaction, and pluggable storage.",
     "keywords": ["laravel", "lsm", "lsm-tree", "storage", "key-value", "sstable", "compaction"],
     "license": "MIT",

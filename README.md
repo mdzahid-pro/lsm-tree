@@ -37,7 +37,7 @@ Reach for it when you are writing constantly and reading by exact key.
 ## Installation
 
 ```bash
-composer require lsm-tree/laravel
+composer require mdzahid-pro/lsm-tree
 php artisan lsm:install
 ```
 
