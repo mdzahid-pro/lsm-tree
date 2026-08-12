@@ -84,6 +84,95 @@ final class LsmTreeTest extends TestCase
         self::assertNull($tree->get('victim'), 'A deleted key came back after compaction.');
     }
 
+    /**
+     * Compaction stores one run, not two.
+     *
+     * The older assertions here only checked that runs existed, which a
+     * duplicated run satisfies just as well as a correct one. These count.
+     */
+    #[Test]
+    public function compaction_leaves_one_copy_of_the_merged_run(): void
+    {
+        $tree = $this->tree(buffer: 2);
+
+        // Buffer of two over ten writes seals five runs, which is enough to
+        // trip the default four-runs-per-level threshold.
+        foreach (range(1, 10) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $ids = [];
+
+        foreach ($tree->levels() as $runs) {
+            foreach ($runs as $run) {
+                $ids[] = $run->id();
+            }
+        }
+
+        self::assertSame(
+            $ids,
+            array_values(array_unique($ids)),
+            'A merged run was stored more than once.',
+        );
+    }
+
+    #[Test]
+    public function a_merged_level_holds_a_single_run(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 2);
+
+        foreach (range(1, 4) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+
+        self::assertCount(1, $tree->levels()[1] ?? [], 'A merge must produce exactly one run.');
+    }
+
+    /**
+     * Two runs per level is the lowest value the policy accepts. A duplicated
+     * merge output holds such a level at the threshold forever, so this hangs
+     * rather than fails when the store is wrong.
+     */
+    #[Test]
+    public function compaction_terminates_at_the_smallest_legal_threshold(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 8) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        foreach ($tree->levels() as $level => $runs) {
+            self::assertLessThan(2, count($runs), "Level {$level} is still at the compaction threshold.");
+        }
+    }
+
+    #[Test]
+    public function reported_run_count_matches_the_runs_actually_stored(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 8) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        $stored = 0;
+
+        foreach ($tree->levels() as $runs) {
+            $stored += count($runs);
+        }
+
+        self::assertSame($stored, $tree->statistics()->runs);
+    }
+
     #[Test]
     public function a_key_that_was_never_written_is_absent(): void
     {
