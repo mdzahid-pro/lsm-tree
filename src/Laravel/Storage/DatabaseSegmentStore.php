@@ -25,6 +25,8 @@ use Lsm\Model\Entry;
  * The metadata for every run is cached in memory for the life of the instance
  * because the read path consults it on every lookup; it is invalidated
  * whenever this instance changes the hierarchy.
+ *
+ * @phpstan-type SegmentRow object{segment_id: string, level: int, entry_count: int, min_key: string, max_key: string, filter_bits: string|null, filter_size: int, filter_hashes: int}
  */
 final class DatabaseSegmentStore implements SegmentStoreInterface
 {
@@ -146,7 +148,7 @@ final class DatabaseSegmentStore implements SegmentStoreInterface
             return $this->cachedLevels;
         }
 
-        /** @var list<object> $rows */
+        /** @var list<SegmentRow> $rows */
         $rows = $this->connection->table($this->segmentsTable)
             ->where('store', $this->store)
             ->orderBy('level')
@@ -205,16 +207,7 @@ final class DatabaseSegmentStore implements SegmentStoreInterface
     }
 
     /**
-     * @param object{
-     *     segment_id: string,
-     *     level: int,
-     *     entry_count: int,
-     *     min_key: string,
-     *     max_key: string,
-     *     filter_bits: string|null,
-     *     filter_size: int,
-     *     filter_hashes: int
-     * } $row
+     * @param SegmentRow $row
      */
     private function hydrate(object $row): DatabaseSegment
     {

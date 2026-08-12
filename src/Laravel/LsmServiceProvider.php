@@ -41,7 +41,6 @@ final class LsmServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(LsmManager::class, static fn (Container $app): LsmManager => new LsmManager(
-            $app,
             $app->make(Config::class),
             $app->make(StoreFactory::class),
         ));
