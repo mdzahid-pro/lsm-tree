@@ -1,9 +1,21 @@
 {
-    "name": "lsm-tree/laravel",
+    "name": "mdzahid-pro/lsm-tree",
     "description": "A log-structured merge tree for Laravel: append-only writes, immutable sorted runs, background compaction, and pluggable storage.",
     "keywords": ["laravel", "lsm", "lsm-tree", "storage", "key-value", "sstable", "compaction"],
     "license": "MIT",
     "type": "library",
+    "homepage": "https://github.com/mdzahid-pro/lsm-tree",
+    "authors": [
+        {
+            "name": "Md Zahid",
+            "email": "mdzahid.pro@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/mdzahid-pro/lsm-tree/issues",
+        "source": "https://github.com/mdzahid-pro/lsm-tree"
+    },
     "require": {
         "php": "^8.3",
         "illuminate/bus": "^12.0 || ^13.0",

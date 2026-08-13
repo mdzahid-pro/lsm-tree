@@ -34,10 +34,107 @@ Reach for it when you are writing constantly and reading by exact key.
 
 ---
 
+## What it looks like in practice
+
+Four shapes that fit, and the code each turns into. Keys and values are both
+strings — anything structured goes through `json_encode` on the way in.
+
+### An audit trail nobody edits
+
+Every action appends, nothing is ever updated, and a read is always "show me
+this one event".
+
+```php
+Lsm::store('audit')->put(
+    "order:{$order->id}:{$event->id}",
+    json_encode(['actor' => $user->id, 'action' => 'refunded', 'cents' => 4200]),
+);
+
+$event = json_decode(Lsm::store('audit')->getOrFail("order:{$order->id}:{$event->id}"), true);
+```
+
+`getOrFail()` throws `KeyNotFoundException` instead of returning null, which is
+what you want when a missing audit record is a bug rather than a branch.
+
+Asking "every event for this order" is asking the wrong store. Keep that index
+in your database and the payloads here.
+
+### Session or device state under write pressure
+
+Written on nearly every request, read by exact id, deleted on logout. Depend on
+the narrow contract so the rest of the app cannot compact a level by accident.
+
+```php
+final readonly class SessionRepository
+{
+    public function __construct(private KeyValueStoreInterface $store) {}
+
+    public function save(string $id, array $payload): void
+    {
+        $this->store->put("session:{$id}", json_encode($payload));
+    }
+
+    public function load(string $id): ?array
+    {
+        $raw = $this->store->get("session:{$id}");
+
+        return $raw === null ? null : json_decode($raw, true);
+    }
+
+    public function forget(string $id): void
+    {
+        $this->store->delete("session:{$id}");   // writes a tombstone
+    }
+}
+```
+
+```php
+// A service provider
+$this->app->bind(KeyValueStoreInterface::class, fn () => Lsm::store('sessions'));
+```
+
+### Telemetry you ingest in bulk
+
+A nightly dump lands on a disk and gets streamed in. The file is read line by
+line, so a file larger than memory is routine.
+
+```bash
+php artisan lsm:import readings-2026-08-12.jsonl --store=telemetry --disk=s3 --flush
+```
+
+Put the timestamp in the key — `device:42:2026-08-12T10:00` — and each reading
+is a direct lookup. This still is not a range scan: you can fetch a known
+minute, not "every reading last Tuesday".
+
+### A projection you rebuild rather than migrate
+
+Read models are derived data. When the shape changes you do not write a
+migration, you replay the events and swap the store.
+
+```php
+Event::listen(OrderShipped::class, function ($e) {
+    Lsm::store('projections')->put("order:{$e->orderId}", json_encode($e->snapshot()));
+});
+```
+
+Because runs are immutable, a rebuild is append-only too — it competes with
+nothing and no reader sees a half-built view.
+
+### Which driver each of these wants
+
+| Scenario | Driver | Why |
+|---|---|---|
+| Audit trail, many app servers | `database` | More than one process writes |
+| Sessions, one queue worker | `file` | Single writer, local disk, fastest |
+| Telemetry import | `file` or `database` | Follows wherever the reads happen |
+| Projections rebuilt offline | `memory` then swap | Nothing durable until it is ready |
+
+---
+
 ## Installation
 
 ```bash
-composer require lsm-tree/laravel
+composer require mdzahid-pro/lsm-tree
 php artisan lsm:install
 ```
 
