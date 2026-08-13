@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `CompactionStalledException`, raised when a compaction policy never stops
+  returning a plan. A policy with a termination bug now fails with a diagnostic
+  instead of spinning forever.
+- `authors`, `support` and `homepage` metadata, so the package advertises a
+  maintainer and somewhere to report bugs.
+- A "What it looks like in practice" section in `README.md`: four worked
+  scenarios and the segment driver each one wants.
+
 ### Changed
 
 - Renamed the package from `lsm-tree/laravel` to `mdzahid-pro/lsm-tree`, which
@@ -14,12 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `composer require mdzahid-pro/lsm-tree`. No namespace, class or config key
   changed.
 
-### Added
+### Fixed
 
-- `authors`, `support` and `homepage` metadata, so the package advertises a
-  maintainer and somewhere to report bugs.
-- A "What it looks like in practice" section in `README.md`: four worked
-  scenarios and the segment driver each one wants.
+- Compaction stored the merged run twice on the `memory` driver. Every merge
+  doubled that run's storage, inflated read amplification and overreported
+  `statistics()->runs`. With `compaction.max_runs_per_level` set to 2 the extra
+  copy held the level at its threshold and `compact()` never returned.
+- `SegmentStoreInterface::replace()` now documents that implementations must not
+  store the replacement, which `write()` has already stored. The three shipped
+  drivers had read the undocumented parameter three different ways.
+- A rejected import line now names the line it came from. An unknown operation
+  type, an empty type column and a valueless `put` previously raised errors with
+  no source context.
 
 ## [1.0.0] - 2026-08-12
 

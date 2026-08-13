@@ -32,8 +32,7 @@ use Lsm\Model\Statistics;
  * @method Statistics statistics()
  *
  * @phpstan-type SegmentConfig array<string, mixed>
- * @phpstan-type SegmentDriver Closure(Container, string, SegmentConfig, KeyFilterFactoryInterface):
- *                               SegmentStoreInterface
+ * @phpstan-type SegmentDriver Closure(Container, string, SegmentConfig, KeyFilterFactoryInterface): SegmentStoreInterface
  * @phpstan-type WalDriver Closure(Container, string, array<string, mixed>): WriteAheadLogInterface
  */
 final class LsmManager
@@ -48,7 +47,6 @@ final class LsmManager
     private array $walDrivers = [];
 
     public function __construct(
-        private readonly Container $container,
         private readonly Config $config,
         private readonly StoreFactory $factory,
     ) {}

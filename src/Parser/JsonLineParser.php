@@ -41,10 +41,16 @@ final readonly class JsonLineParser implements OperationParserInterface
 
         $value = $decoded['value'] ?? null;
 
-        return new Operation(
-            OperationType::fromInput((string) $decoded['type']),
-            (string) $decoded['key'],
-            is_scalar($value) ? (string) $value : null,
-        );
+        // Same reason as the CSV parser: the model does not know the line, and
+        // an import failure that does not name one is not actionable.
+        try {
+            return new Operation(
+                OperationType::fromInput((string) $decoded['type']),
+                (string) $decoded['key'],
+                is_scalar($value) ? (string) $value : null,
+            );
+        } catch (MalformedOperationException $exception) {
+            throw MalformedOperationException::atLine($this->label, $line, $exception->getMessage());
+        }
     }
 }

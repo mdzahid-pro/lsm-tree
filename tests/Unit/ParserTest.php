@@ -39,6 +39,55 @@ final class ParserTest extends TestCase
         self::assertNull((new CsvLineParser)->parse('type,key,value', 1));
     }
 
+    /**
+     * A rejected import line is only actionable if the error names it. The
+     * model raises these, and it has no idea which line it was handed.
+     */
+    #[Test]
+    public function an_unknown_csv_type_is_reported_with_its_line(): void
+    {
+        $this->expectException(MalformedOperationException::class);
+        $this->expectExceptionMessage('csv line 7');
+
+        (new CsvLineParser)->parse('bogus,a,1', 7);
+    }
+
+    #[Test]
+    public function an_empty_csv_type_is_reported_with_its_line(): void
+    {
+        $this->expectException(MalformedOperationException::class);
+        $this->expectExceptionMessage('csv line 3');
+
+        (new CsvLineParser)->parse(',a,1', 3);
+    }
+
+    #[Test]
+    public function a_csv_put_without_a_value_is_reported_with_its_line(): void
+    {
+        $this->expectException(MalformedOperationException::class);
+        $this->expectExceptionMessage('csv line 9');
+
+        (new CsvLineParser)->parse('put,a', 9);
+    }
+
+    #[Test]
+    public function an_unknown_json_type_is_reported_with_its_line(): void
+    {
+        $this->expectException(MalformedOperationException::class);
+        $this->expectExceptionMessage('json line 5');
+
+        (new JsonLineParser)->parse('{"type":"bogus","key":"a"}', 5);
+    }
+
+    #[Test]
+    public function direct_callers_of_the_model_still_get_the_plain_message(): void
+    {
+        $this->expectException(MalformedOperationException::class);
+        $this->expectExceptionMessage('Unknown operation type "bogus"');
+
+        OperationType::fromInput('bogus');
+    }
+
     #[Test]
     public function a_csv_delete_needs_no_value(): void
     {

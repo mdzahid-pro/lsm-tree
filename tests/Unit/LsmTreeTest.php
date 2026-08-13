@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace Lsm\Tests\Unit;
 
 use Lsm\Config\EngineConfiguration;
+use Lsm\Contract\CompactionPolicyInterface;
+use Lsm\Exception\CompactionStalledException;
 use Lsm\Exception\KeyNotFoundException;
+use Lsm\Exception\LsmExceptionInterface;
 use Lsm\Filter\BloomFilterFactory;
 use Lsm\LsmTree;
+use Lsm\Model\Entry;
 use Lsm\Runtime\EngineFactory;
 use Lsm\Segment\SegmentFactory;
 use Lsm\Sequence\SequentialSegmentIdGenerator;
 use Lsm\Storage\InMemorySegmentStore;
+use Lsm\Tests\Doubles\NeverSatisfiedCompactionPolicy;
 use Lsm\Trace\CollectingTraceListener;
 use Lsm\Wal\InMemoryWriteAheadLog;
 use PHPUnit\Framework\Attributes\Test;
@@ -82,6 +87,149 @@ final class LsmTreeTest extends TestCase
         $tree->compact();
 
         self::assertNull($tree->get('victim'), 'A deleted key came back after compaction.');
+    }
+
+    /**
+     * Compaction stores one run, not two.
+     *
+     * The older assertions here only checked that runs existed, which a
+     * duplicated run satisfies just as well as a correct one. These count.
+     */
+    #[Test]
+    public function compaction_leaves_one_copy_of_the_merged_run(): void
+    {
+        $tree = $this->tree(buffer: 2);
+
+        // Buffer of two over ten writes seals five runs, which is enough to
+        // trip the default four-runs-per-level threshold.
+        foreach (range(1, 10) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $ids = [];
+
+        foreach ($tree->levels() as $runs) {
+            foreach ($runs as $run) {
+                $ids[] = $run->id();
+            }
+        }
+
+        self::assertSame(
+            $ids,
+            array_values(array_unique($ids)),
+            'A merged run was stored more than once.',
+        );
+    }
+
+    #[Test]
+    public function a_merged_level_holds_a_single_run(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 2);
+
+        foreach (range(1, 4) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+
+        self::assertCount(1, $tree->levels()[1] ?? [], 'A merge must produce exactly one run.');
+    }
+
+    /**
+     * Two runs per level is the lowest value the policy accepts. A duplicated
+     * merge output holds such a level at the threshold forever, so this hangs
+     * rather than fails when the store is wrong.
+     */
+    #[Test]
+    public function compaction_terminates_at_the_smallest_legal_threshold(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 8) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        foreach ($tree->levels() as $level => $runs) {
+            self::assertLessThan(2, count($runs), "Level {$level} is still at the compaction threshold.");
+        }
+    }
+
+    #[Test]
+    public function reported_run_count_matches_the_runs_actually_stored(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 8) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        $stored = 0;
+
+        foreach ($tree->levels() as $runs) {
+            $stored += count($runs);
+        }
+
+        self::assertSame($stored, $tree->statistics()->runs);
+    }
+
+    /**
+     * Nothing in CompactionPolicyInterface can force a policy to settle, so a
+     * third-party policy that always returns a plan must fail loudly rather
+     * than pin a queue worker at 100% forever.
+     */
+    #[Test]
+    public function a_policy_that_never_settles_is_stopped(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        $this->expectException(CompactionStalledException::class);
+
+        $tree->compact();
+    }
+
+    #[Test]
+    public function the_stall_error_names_the_offending_policy(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        try {
+            $tree->compact();
+            self::fail('Compaction should not have settled.');
+        } catch (CompactionStalledException $exception) {
+            self::assertStringContainsString(NeverSatisfiedCompactionPolicy::class, $exception->getMessage());
+            self::assertStringContainsString('1000', $exception->getMessage());
+        }
+    }
+
+    #[Test]
+    public function the_stall_error_is_catchable_as_a_package_exception(): void
+    {
+        $tree = $this->treeWithPolicy(new NeverSatisfiedCompactionPolicy);
+
+        $this->expectException(LsmExceptionInterface::class);
+
+        $tree->compact();
+    }
+
+    #[Test]
+    public function the_shipped_policy_never_trips_the_guard(): void
+    {
+        $tree = $this->tree(buffer: 2, maxRuns: 2, bottomLevel: 1);
+
+        foreach (range(1, 20) as $i) {
+            $tree->put('k' . $i, 'v' . $i);
+        }
+
+        $tree->flush();
+        $tree->compact();
+
+        self::assertSame('v20', $tree->get('k20'));
     }
 
     #[Test]
@@ -165,6 +313,29 @@ final class LsmTreeTest extends TestCase
         $tree->put('b', '2');
 
         self::assertNotSame([], $trace->events());
+    }
+
+    /**
+     * Seeds one run at level 0 directly, so compact() has work to do without a
+     * put() first tripping the stall inside its own automatic flush.
+     */
+    private function treeWithPolicy(CompactionPolicyInterface $policy): LsmTree
+    {
+        $store = new InMemorySegmentStore(
+            new SegmentFactory(
+                new SequentialSegmentIdGenerator,
+                new BloomFilterFactory(10, 7),
+            ),
+        );
+
+        $store->write([new Entry('a', '1', 1)], 0, 1);
+
+        return (new EngineFactory)->create(
+            new EngineConfiguration(100, 2, 1),
+            $store,
+            new InMemoryWriteAheadLog,
+            policy: $policy,
+        );
     }
 
     private function tree(
