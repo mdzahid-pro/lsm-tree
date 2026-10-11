@@ -14,6 +14,7 @@ use Lsm\Contract\SegmentStoreInterface;
 use Lsm\Contract\SequenceGeneratorInterface;
 use Lsm\Contract\TraceListenerInterface;
 use Lsm\Contract\WriteAheadLogInterface;
+use Lsm\Exception\CompactionStalledException;
 use Lsm\Exception\KeyNotFoundException;
 use Lsm\Model\Entry;
 use Lsm\Model\Statistics;
@@ -35,6 +36,15 @@ use Lsm\Segment\SegmentMerger;
  */
 final class LsmTree implements KeyValueStoreInterface, MaintenanceInterface
 {
+    /**
+     * A ceiling on compaction passes in one call, not a tuning knob.
+     *
+     * Set far above any real cascade — a tree deep enough to need a thousand
+     * merges in one pass has other problems — so it only ever catches a policy
+     * that will not settle.
+     */
+    private const int MAX_COMPACTION_PASSES = 1000;
+
     /**
      * Guards against the lock being taken twice in one call stack: flush()
      * ends by compacting, and compact() is itself a public entry point.
@@ -122,8 +132,13 @@ final class LsmTree implements KeyValueStoreInterface, MaintenanceInterface
     }
 
     /**
-     * Applies the policy until it is satisfied. Each pass strictly reduces the
-     * number of runs at the level it touches, so the loop terminates.
+     * Applies the policy until it is satisfied.
+     *
+     * A correct policy stops asking for work once each pass has reduced the
+     * runs at the level it touched. Nothing in the interface can enforce that,
+     * so the loop is bounded and gives up rather than spinning forever.
+     *
+     * @throws CompactionStalledException when the policy never settles
      */
     public function compact(): void
     {
@@ -244,7 +259,16 @@ final class LsmTree implements KeyValueStoreInterface, MaintenanceInterface
 
     private function runCompaction(): void
     {
+        $passes = 0;
+
         while (($plan = $this->compactionPolicy->plan($this->segments)) !== null) {
+            if (++$passes > self::MAX_COMPACTION_PASSES) {
+                throw CompactionStalledException::afterPasses(
+                    self::MAX_COMPACTION_PASSES,
+                    $this->compactionPolicy::class,
+                );
+            }
+
             $merged = $this->segments->transactional(function () use ($plan) {
                 $result = $this->segments->write(
                     $this->merger->merge($plan->inputs, $plan->dropTombstones),

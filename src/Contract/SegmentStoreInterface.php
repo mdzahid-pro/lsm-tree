@@ -28,9 +28,21 @@ interface SegmentStoreInterface
     public function write(iterable $entries, int $level, ?int $estimatedCount = null): ?SegmentInterface;
 
     /**
-     * Swaps the inputs of a compaction for its output.
+     * Retires the inputs of a compaction now that its output is stored.
+     *
+     * Implementations must remove $obsolete and must NOT store $replacement:
+     * write() has already stored it. Storing it a second time leaves the level
+     * holding two copies of the same run, which inflates read amplification and
+     * can leave the level permanently at the threshold the policy compacts on.
+     *
+     * $replacement is passed so a store can record what superseded the retired
+     * runs — lineage, an audit row, a cache key. A store with no such need
+     * ignores it.
      *
      * @param list<SegmentInterface> $obsolete
+     * @param SegmentInterface|null $replacement the run write() just stored,
+     *                                           or null when the merge produced
+     *                                           no entries
      *
      * @throws SegmentNotFoundException when an input is not tracked here
      */

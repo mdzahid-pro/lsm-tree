@@ -49,8 +49,7 @@ use Psr\Log\LoggerInterface;
  * and unit-testable without booting an application.
  *
  * @phpstan-type SegmentConfig array<string, mixed>
- * @phpstan-type SegmentDriver Closure(Container, string, SegmentConfig, KeyFilterFactoryInterface):
- *                               SegmentStoreInterface
+ * @phpstan-type SegmentDriver Closure(Container, string, SegmentConfig, KeyFilterFactoryInterface): SegmentStoreInterface
  * @phpstan-type WalDriver Closure(Container, string, array<string, mixed>): WriteAheadLogInterface
  */
 final readonly class StoreFactory

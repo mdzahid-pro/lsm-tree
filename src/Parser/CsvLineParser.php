@@ -30,7 +30,9 @@ final readonly class CsvLineParser implements OperationParserInterface
 
         $columns = str_getcsv($contents, $this->delimiter, '"', '');
 
-        if ($columns === [] || $columns[0] === null) {
+        // str_getcsv() returns a non-empty list for the non-blank input that
+        // reaches this line, so only a null first column is possible here.
+        if ($columns[0] === null) {
             return null;
         }
 
@@ -46,10 +48,17 @@ final readonly class CsvLineParser implements OperationParserInterface
 
         $value = $columns[2] ?? null;
 
-        return new Operation(
-            OperationType::fromInput($type),
-            trim((string) $columns[1]),
-            $value === null || $value === '' ? null : (string) $value,
-        );
+        // An unknown type or a valueless put is reported by the model without
+        // any idea which line it came from. A failed import is only actionable
+        // if it names the offending line, so borrow this one.
+        try {
+            return new Operation(
+                OperationType::fromInput($type),
+                trim((string) $columns[1]),
+                $value === null || $value === '' ? null : (string) $value,
+            );
+        } catch (MalformedOperationException $exception) {
+            throw MalformedOperationException::atLine($this->label, $line, $exception->getMessage());
+        }
     }
 }
